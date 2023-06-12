@@ -1,6 +1,9 @@
 import pygame
 import random
 import os
+from loguru import logger
+from enum import Enum
+from dataclasses import dataclass
 
 pygame.init()
 
@@ -57,8 +60,8 @@ class Grid:
         elif self.val == -1:
             # Auto reveal all mines if it's a mine
             for m in self.game.mines:
-                if not self.grid[m[1]][m[0]].clicked:
-                    self.grid[m[1]][m[0]].revealGrid()
+                if not self.game.grid[m[1]][m[0]].clicked:
+                    self.game.grid[m[1]][m[0]].revealGrid()
 
     def updateValue(self):
         # Update the value when all grid is generated
@@ -69,6 +72,18 @@ class Grid:
                         if self.yGrid + y >= 0 and self.yGrid + y < self.game.game_height:
                             if self.game.grid[self.yGrid + y][self.xGrid + x].val == -1:
                                 self.val += 1
+
+
+@dataclass
+class GameEvent:
+    class EventType(Enum):
+        EXIT = 0
+        RESTART = 1
+        CLICK = 2
+        RIGHT_CLICK = 3
+
+    t: EventType
+    data: any
 
 
 class MinesweeperGame:
@@ -104,6 +119,7 @@ class MinesweeperGame:
     spr_mineFalse = pygame.image.load(f"{src_dir}/Sprites/mineFalse.png")
 
     def __init__(self, game_width=10, game_height=10, num_mine=9):
+        logger.info(f"Init game with {game_width=}, {game_height=}, {num_mine=}")
         self.game_width = game_width
         self.game_height = game_height
         self.num_mine = num_mine
@@ -111,13 +127,12 @@ class MinesweeperGame:
         self.display_height = self.grid_size * game_height + self.border + self.top_border
         self.display = pygame.display.set_mode((self.display_width, self.display_height))
 
-        self.grid = []  # The main grid
-        self.mines = []  # Pos of the mines
+        self.grid = None
+        self.mines = None
         self.game_state = "None"
-        self.mine_left = self.num_mine  # Number of mine left
+        self.mine_left = self.num_mine
 
-    # Create function to draw texts
-    def drawText(self, txt, s, yOff=0):
+    def draw_text(self, txt, s, yOff=0):
         screen_text = pygame.font.SysFont("Calibri", s, True).render(txt, True, (0, 0, 0))
         rect = screen_text.get_rect()
         rect.center = (
@@ -127,79 +142,79 @@ class MinesweeperGame:
         self.display.blit(screen_text, rect)
 
     def start_game(self):
-        self.grid = []  # The main grid
-        self.mines = []  # Pos of the mines
-        self.game_state = "Playing"  # Game state
-        self.mine_left = self.num_mine  # Number of mine left
+        self.game_state = "Playing"
+        self.mine_left = self.num_mine
 
         # Generating mines
-        mines = set()
-        while len(mines) < self.num_mine:
-            pos = (
-                random.randrange(0, self.game_width),
-                random.randrange(0, self.game_height),
-            )
-            mines.add(pos)
+        self.mines = set()
+        while len(self.mines) < self.num_mine:
+            pos = random.randrange(0, self.game_width), random.randrange(0, self.game_height)
+            self.mines.add(pos)
 
-        # Generating entire grid
-        for j in range(self.game_height):
-            line = []
-            for i in range(self.game_width):
-                if (i, j) in mines:
-                    line.append(Grid(i, j, -1, self))
-                else:
-                    line.append(Grid(i, j, 0, self))
-            self.grid.append(line)
+        self.grid = [
+            [Grid(i, j, -1 if (i, j) in self.mines else 0, self) for i in range(self.game_width)]
+            for j in range(self.game_height)
+        ]
 
         # Update of the grid
-        for i in self.grid:
-            for j in i:
-                j.updateValue()
+        for row in self.grid:
+            for g in row:
+                g.updateValue()
+
+    def get_event(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                yield GameEvent(GameEvent.EventType.EXIT, None)
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_r:
+                yield GameEvent(GameEvent.EventType.RESTART, None)
+            elif event.type == pygame.MOUSEBUTTONUP:
+                for i, row in enumerate(self.grid):
+                    for j, g in enumerate(row):
+                        if g.rect.collidepoint(event.pos):
+                            yield GameEvent(
+                                GameEvent.EventType.CLICK if event.button == 1 else GameEvent.EventType.RIGHT_CLICK,
+                                (i, j),
+                            )
+                            break
 
     def main_loop(self):
         t = 0  # Set time to 0
         # Main Loop
         while self.game_state != "Exit":
+            for event in self.get_event():
+                logger.info(f"{event=}")
+
+                if event.t == GameEvent.EventType.EXIT:
+                    self.game_state = "Exit"
+
+                elif event.t == GameEvent.EventType.RESTART:
+                    self.start_game()
+                    self.main_loop()
+
+                elif event.t == GameEvent.EventType.CLICK:
+                    g = self.grid[event.data[0]][event.data[1]]
+                    # If player left clicked of the grid
+                    g.revealGrid()
+                    # Toggle flag off
+                    if g.flag:
+                        self.mine_left += 1
+                        g.flag = False
+                    # If it's a mine
+                    if g.val == -1:
+                        self.game_state = "Game Over"
+                        g.mineClicked = True
+                else:
+                    j = self.grid[event.data[0]][event.data[1]]
+                    if not j.clicked:
+                        if j.flag:
+                            j.flag = False
+                            self.mine_left += 1
+                        else:
+                            j.flag = True
+                            self.mine_left -= 1
+
             # Reset screen
             self.display.fill(self.bg_color)
-
-            # User inputs
-            for event in pygame.event.get():
-                # Check if player close window
-                if event.type == pygame.QUIT:
-                    self.game_state = "Exit"
-                # Check if play restart
-                if self.game_state == "Game Over" or self.game_state == "Win":
-                    if event.type == pygame.KEYDOWN:
-                        if event.key == pygame.K_r:
-                            self.game_state = "Exit"
-                            self.start_game()
-                            self.main_loop()
-                else:
-                    if event.type == pygame.MOUSEBUTTONUP:
-                        for i in self.grid:
-                            for j in i:
-                                if j.rect.collidepoint(event.pos):
-                                    if event.button == 1:
-                                        # If player left clicked of the grid
-                                        j.revealGrid()
-                                        # Toggle flag off
-                                        if j.flag:
-                                            self.mine_left += 1
-                                            j.falg = False
-                                        # If it's a mine
-                                        if j.val == -1:
-                                            self.game_state = "Game Over"
-                                            j.mineClicked = True
-                                    elif event.button == 3:
-                                        # If the player right clicked
-                                        if not j.clicked:
-                                            if j.flag:
-                                                j.flag = False
-                                                self.mine_left += 1
-                                            else:
-                                                j.flag = True
-                                                self.mine_left -= 1
 
             # Check if won
             w = True
@@ -215,15 +230,15 @@ class MinesweeperGame:
             if self.game_state != "Game Over" and self.game_state != "Win":
                 t += 1
             elif self.game_state == "Game Over":
-                self.drawText("Game Over!", 50)
-                self.drawText("R to restart", 35, 50)
+                self.draw_text("Game Over!", 50)
+                self.draw_text("R to restart", 35, 50)
                 for i in self.grid:
                     for j in i:
                         if j.flag and j.val != -1:
                             j.mineFalse = True
             else:
-                self.drawText("You WON!", 50)
-                self.drawText("R to restart", 35, 50)
+                self.draw_text("You WON!", 50)
+                self.draw_text("R to restart", 35, 50)
             # Draw time
             s = str(t // 15)
             screen_text = pygame.font.SysFont("Calibri", 50).render(s, True, (0, 0, 0))
