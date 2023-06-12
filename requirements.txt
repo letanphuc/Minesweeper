@@ -1,0 +1,5 @@
+pygame
+black
+pycodestyle
+flake8
+pep8-naming
