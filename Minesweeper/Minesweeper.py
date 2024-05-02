@@ -86,14 +86,13 @@ class GameEvent:
 
 class MinesweeperGame:
     bg_color = (192, 192, 192)
-    grid_color = (128, 128, 128)
 
     grid_size = 32
     border = 16
     top_border = 100
 
     text_font = r'Calibri'
-    font_size_large = 25
+    font_size_large = 20
     font_size_small = 15
 
     def __init__(self, game_width=10, game_height=10, num_mine=9):
@@ -144,8 +143,11 @@ class MinesweeperGame:
         self.display.blit(screen_text, rect)
 
     def draw_state(self, txt, x):
-        self.draw_text(txt, x, large=True)
-        y_off = self.font_size_large
+        if txt:
+            self.draw_text(txt, x, large=True)
+            y_off = self.font_size_large
+        else:
+            y_off = 0
         self.draw_text("R to restart", x, y_off=y_off, large=False)
         y_off += self.font_size_small
         self.draw_text("S to resize", x, y_off=y_off, large=False)
@@ -283,5 +285,7 @@ class MinesweeperGame:
             self.draw_state("Game Over!", x)
         elif self.game_state == "Win":
             self.draw_state("You WON!", x)
+        else:
+            self.draw_state("", x)
 
         pygame.display.update()
