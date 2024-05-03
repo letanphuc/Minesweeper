@@ -95,6 +95,8 @@ class MinesweeperGame:
     font_size_large = 20
     font_size_small = 15
 
+    FPS = 20
+
     def __init__(self, game_width=10, game_height=10, num_mine=9):
         logger.info(f"Init game with {game_width=}, {game_height=}, {num_mine=}")
         self.game_width = game_width
@@ -133,26 +135,6 @@ class MinesweeperGame:
         self.text_font_large = pygame.font.SysFont(self.text_font, self.font_size_large, True)
         self.text_font_small = pygame.font.SysFont(self.text_font, self.font_size_small, True)
         self.segment_font = pygame.font.Font(f"{src_dir}/Fonts/DSEG7Classic-Bold.ttf", 50)
-
-    def draw_text(self, txt, x, y_off=0, large=False):
-        font = self.text_font_large if large else self.text_font_small
-        screen_text = font.render(txt, True, (0, 0, 0))
-        rect = screen_text.get_rect()
-        rect.midtop = (x, 10 + y_off)
-        self.display.fill(self.bg_color, rect)
-        self.display.blit(screen_text, rect)
-
-    def draw_state(self, txt, x):
-        if txt:
-            self.draw_text(txt, x, large=True)
-            y_off = self.font_size_large
-        else:
-            y_off = 0
-        self.draw_text("R to restart", x, y_off=y_off, large=False)
-        y_off += self.font_size_small
-        self.draw_text("S to resize", x, y_off=y_off, large=False)
-        y_off += self.font_size_small
-        self.draw_text("Q to quit", x, y_off=y_off, large=False)
 
     def start_game(self):
         self.game_state = "Playing"
@@ -217,19 +199,18 @@ class MinesweeperGame:
                     if event.t == GameEvent.EventType.CLICK:
                         g = self.grid[event.data[0]][event.data[1]]
 
-                        g.reveal()
-
                         if g.flag:  # left-click flag: unflag
                             self.mine_left += 1
                             g.flag = False
-
-                        if g.val == -1:  # Mine exploded
-                            self.game_state = "Game Over"
-                            g.mine_clicked = True
-                            for i in self.grid:  # reveal all false flags
-                                for j in i:
-                                    if j.flag and j.val != -1:
-                                        j.mine_false = True
+                        else:
+                            g.reveal()
+                            if g.val == -1:  # Mine exploded
+                                self.game_state = "Game Over"
+                                g.mine_clicked = True
+                                for i in self.grid:  # reveal all false flags
+                                    for j in i:
+                                        if j.flag and j.val != -1:
+                                            j.mine_false = True
 
                     elif event.t == GameEvent.EventType.RIGHT_CLICK:
                         g = self.grid[event.data[0]][event.data[1]]
@@ -240,7 +221,7 @@ class MinesweeperGame:
             if self.game_state not in ("Exit", "Resize"):
                 self.process_state()
                 self.render()
-                self.timer.tick(15)
+                self.timer.tick(self.FPS)
 
             if self.game_state not in ("Game Over", "Win"):
                 self.running_time += 1
@@ -268,19 +249,13 @@ class MinesweeperGame:
             for j in i:
                 j.draw()
 
-        s = str(self.running_time // 15)  # draw time
-        time_text = self.segment_font.render(s, True, (255, 0, 0))
-        time_text_rect = time_text.get_rect(topleft=(self.border, self.border))
-        self.display.fill((0, 0, 0), time_text_rect)
-        self.display.blit(time_text, time_text_rect)
+        s = str(self.running_time // self.FPS)  # draw time
+        time_rect = self.draw_segment(s, topleft=(self.border, self.border))
 
-        # draw number of mines left
-        mines_text = self.segment_font.render(self.mine_left.__str__(), True, (255, 0, 0))
-        mines_text_rect = mines_text.get_rect(topright=(self.display_width - self.border, self.border))
-        self.display.fill((0, 0, 0), mines_text_rect)
-        self.display.blit(mines_text, mines_text_rect)
+        s = str(self.mine_left)  # draw number of mines left
+        mines_rect = self.draw_segment(s, topright=(self.display_width - self.border, self.border))
 
-        x = (mines_text_rect.left + time_text_rect.right) // 2
+        x = (mines_rect.left + time_rect.right) // 2
         if self.game_state == "Game Over":
             self.draw_state("Game Over!", x)
         elif self.game_state == "Win":
@@ -289,3 +264,33 @@ class MinesweeperGame:
             self.draw_state("", x)
 
         pygame.display.update()
+
+    def draw_text(self, texts, x, y_off=10, large=False):
+        font = self.text_font_large if large else self.text_font_small
+        for txt in texts:
+            text_surface = font.render(txt, True, (0, 0, 0))
+            rect = text_surface.get_rect()
+            rect.midtop = (x, y_off)
+            self.display.fill(self.bg_color, rect)
+            self.display.blit(text_surface, rect)
+            y_off += rect.height
+
+    def draw_state(self, txt, x):
+        if txt:
+            self.draw_text([txt], x, y_off=10, large=True)
+            y_off = self.font_size_large + 10
+        else:
+            y_off = 10
+        self.draw_text([
+            "R to restart",
+            "S to resize",
+            "Q to quit"],
+            x, y_off=y_off, large=False)
+
+    def draw_segment(self, txt, **pos):
+        text_surface = self.segment_font.render(txt, True, (255, 0, 0))
+        text_rect = text_surface.get_rect(**pos)
+        bg_rect = text_rect.inflate(0, 8)
+        self.display.fill((0, 0, 0), bg_rect)
+        self.display.blit(text_surface, text_rect)
+        return bg_rect
