@@ -78,7 +78,8 @@ class GameEvent:
         RESTART = 1
         CLICK = 2
         RIGHT_CLICK = 3
-        RESIZE = 4
+        RESIZE = 4,
+        HIGHSCORES = 5
 
     t: EventType
     data: any
@@ -97,7 +98,11 @@ class MinesweeperGame:
 
     FPS = 20
 
-    def __init__(self, game_width=10, game_height=10, num_mine=9):
+    time_start = time_current = 0
+    return_argument = None
+
+    def __init__(self, game_width=10, game_height=10, num_mine=9, highscores=None):
+        self.highscores = highscores
         logger.info(f"Init game with {game_width=}, {game_height=}, {num_mine=}")
         self.game_width = game_width
         self.game_height = game_height
@@ -111,9 +116,11 @@ class MinesweeperGame:
         self.display_height = self.grid_size * game_height + self.border + self.top_border
         self.display = pygame.display.set_mode((self.display_width, self.display_height))
 
-        self.running_time = self.mine_left = self.mines = self.game_state = self.grid = None
+        self.mine_left = self.mines = self.game_state = self.grid = None
 
         src_dir = os.path.dirname(os.path.realpath(__file__))
+        # source: https://www.cleanpng.com/png-minesweeper-pro-classic-mine-sweeper-minesweeper-p-662259/
+        pygame.display.set_icon(pygame.image.load(f"{src_dir}/Sprites/minesweeper_256.png"))  # change game icon
 
         self.spr_flag = pygame.image.load(f"{src_dir}/Sprites/flag.png")
         self.spr_grid = pygame.image.load(f"{src_dir}/Sprites/Grid.png")
@@ -139,7 +146,6 @@ class MinesweeperGame:
     def start_game(self):
         self.game_state = "Playing"
         self.mine_left = self.num_mine
-        self.running_time = 0
 
         self.mines = set()
         while len(self.mines) < self.num_mine:
@@ -166,13 +172,18 @@ class MinesweeperGame:
             if event.type == pygame.QUIT:
                 yield GameEvent(GameEvent.EventType.EXIT, None)
             elif event.type == pygame.KEYDOWN:
+                logger.info(f"{event=}")
                 if event.key == pygame.K_r:
                     yield GameEvent(GameEvent.EventType.RESTART, None)
-                elif event.key == pygame.K_s:
-                    yield GameEvent(GameEvent.EventType.RESIZE, None)
+                elif event.key == pygame.K_h:
+                    yield GameEvent(GameEvent.EventType.HIGHSCORES, None)
                 elif event.key == pygame.K_q:
                     yield GameEvent(GameEvent.EventType.EXIT, None)
-            elif event.type == pygame.MOUSEBUTTONUP:
+                elif event.unicode == '-':
+                    yield GameEvent(GameEvent.EventType.RESIZE, -1)
+                elif event.unicode == '+':
+                    yield GameEvent(GameEvent.EventType.RESIZE, 1)
+            elif event.type == pygame.MOUSEBUTTONDOWN:
                 for i, row in enumerate(self.grid):
                     for j, g in enumerate(row):
                         if g.rect.collidepoint(event.pos):
@@ -181,21 +192,26 @@ class MinesweeperGame:
                             break
 
     def main_loop(self):
-        while self.game_state not in ("Exit", "Resize"):
+        self.time_start = self.time_current = pygame.time.get_ticks()
+        while self.game_state not in ("Exit", "Resize", "Highscores"):
             for event in self.get_event():
                 logger.info(f"{event=}")
 
                 if event.t == GameEvent.EventType.EXIT:
                     self.game_state = "Exit"
+
                 elif event.t == GameEvent.EventType.RESIZE:
                     self.game_state = "Resize"
+                    self.return_argument = event.data
 
                 elif event.t == GameEvent.EventType.RESTART:
                     self.start_game()
                     self.main_loop()
 
+                elif event.t == GameEvent.EventType.HIGHSCORES:
+                    self.game_state = "Highscores"
 
-                if self.game_state not in ("Game Over", "Win"):
+                if self.game_state == "Playing":
                     if event.t == GameEvent.EventType.CLICK:
                         g = self.grid[event.data[0]][event.data[1]]
 
@@ -218,16 +234,16 @@ class MinesweeperGame:
                             self.mine_left += 1 if g.flag else -1
                             g.flag = not g.flag
 
-            if self.game_state not in ("Exit", "Resize"):
+            if self.game_state not in ("Exit", "Resize", "Highscores", "Win"):
                 self.process_state()
                 self.render()
-                self.timer.tick(self.FPS)
+                self.timer.tick()
 
             if self.game_state not in ("Game Over", "Win"):
-                self.running_time += 1
+                self.time_current = pygame.time.get_ticks()
 
         pygame.quit()
-        return self.game_state
+        return self.game_state, self.return_argument
 
     def process_state(self):
 
@@ -240,6 +256,10 @@ class MinesweeperGame:
 
         if won and self.game_state != "Exit":
             self.game_state = "Win"
+            # if entry is in highscore list, return index to highlight
+            self.return_argument = self.highscores.add_entry(
+                (self.game_width, self.game_height, self.num_mine),
+                self.time_current - self.time_start)
 
     def render(self):
 
@@ -249,7 +269,7 @@ class MinesweeperGame:
             for j in i:
                 j.draw()
 
-        s = str(self.running_time // self.FPS)  # draw time
+        s = str((self.time_current - self.time_start) // 1000)  # draw time
         time_rect = self.draw_segment(s, topleft=(self.border, self.border))
 
         s = str(self.mine_left)  # draw number of mines left
@@ -259,7 +279,10 @@ class MinesweeperGame:
         if self.game_state == "Game Over":
             self.draw_state("Game Over!", x)
         elif self.game_state == "Win":
-            self.draw_state("You WON!", x)
+            if self.return_argument is not None:
+                self.draw_state(f"Rank {self.return_argument + 1}!", x)
+            else:
+                self.draw_state("You WON!", x)
         else:
             self.draw_state("", x)
 
@@ -277,14 +300,15 @@ class MinesweeperGame:
 
     def draw_state(self, txt, x):
         if txt:
-            self.draw_text([txt], x, y_off=10, large=True)
-            y_off = self.font_size_large + 10
+            self.draw_text([txt], x, y_off=5, large=True)
+            y_off = self.font_size_large + 5
         else:
-            y_off = 10
+            y_off = 5
         self.draw_text([
-            "R to restart",
-            "S to resize",
-            "Q to quit"],
+            "R Restart",
+            "H Highscores",
+            "-/+ Resize",
+            "Q Quit"],
             x, y_off=y_off, large=False)
 
     def draw_segment(self, txt, **pos):
