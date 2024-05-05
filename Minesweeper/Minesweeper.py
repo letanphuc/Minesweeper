@@ -88,13 +88,14 @@ class GameEvent:
 class MinesweeperGame:
     bg_color = (192, 192, 192)
 
+    text_font = r'Calibri'
+    font_size_large = 30
+    font_size_small = 20
+
     grid_size = 32
     border = 16
     top_border = 100
-
-    text_font = r'Calibri'
-    font_size_large = 20
-    font_size_small = 15
+    bottom_border = border + 2*font_size_small
 
     FPS = 20
 
@@ -113,7 +114,7 @@ class MinesweeperGame:
         pygame.display.set_caption("Minesweeper")
 
         self.display_width = self.grid_size * game_width + self.border * 2
-        self.display_height = self.grid_size * game_height + self.border + self.top_border
+        self.display_height = self.grid_size * game_height + self.bottom_border + self.top_border
         self.display = pygame.display.set_mode((self.display_width, self.display_height))
 
         self.mine_left = self.mines = self.game_state = self.grid = None
@@ -127,6 +128,9 @@ class MinesweeperGame:
         self.spr_mine = pygame.image.load(f"{src_dir}/Sprites/mine.png")
         self.spr_mine_clicked = pygame.image.load(f"{src_dir}/Sprites/mineClicked.png")
         self.spr_mine_false = pygame.image.load(f"{src_dir}/Sprites/mineFalse.png")
+        self.spr_game_won = pygame.image.load(f"{src_dir}/Sprites/gamewon.png")  # https://www.cleanpng.com/png-microsoft-minesweeper-video-game-quantum-minesweep-3302023/
+        self.spr_game_lost = pygame.image.load(f"{src_dir}/Sprites/gamelost.png")  # https://www.cleanpng.com/png-computer-icons-minesweeper-3374745/
+        self.spr_rank = pygame.image.load(f"{src_dir}/Sprites/rank.png")  # https://de.cleanpng.com/png-5ejl5o/
         self.spr_grids = (
             pygame.image.load(f"{src_dir}/Sprites/empty.png"),
             pygame.image.load(f"{src_dir}/Sprites/grid1.png"),
@@ -277,39 +281,31 @@ class MinesweeperGame:
 
         x = (mines_rect.left + time_rect.right) // 2
         if self.game_state == "Game Over":
-            self.draw_state("Game Over!", x)
+            rect = self.spr_game_lost.get_rect(midtop=(x, time_rect.top))
+            self.display.blit(self.spr_game_lost, rect)
         elif self.game_state == "Win":
             if self.return_argument is not None:
-                self.draw_state(f"Rank {self.return_argument + 1}!", x)
+                rect = self.spr_rank.get_rect(midtop=(x, time_rect.top))
+                self.display.blit(self.spr_rank, rect)
+                text_surface = self.text_font_large.render(str(self.return_argument + 1), True, "gold2")
+                text_rect = text_surface.get_rect(center=rect.center)
+                self.display.blit(text_surface, text_rect)
             else:
-                self.draw_state("You WON!", x)
-        else:
-            self.draw_state("", x)
+                rect = self.spr_game_won.get_rect(midtop=(x, time_rect.top))
+                self.display.blit(self.spr_game_won, rect)
 
-        pygame.display.update()
-
-    def draw_text(self, texts, x, y_off=10, large=False):
-        font = self.text_font_large if large else self.text_font_small
+        # bottom key hints
+        texts = ["R Restart, H Highscores",
+                 "-/+ Resize, Q Quit"]
+        x = self.border + self.grid_size * self.game_width / 2
+        y_off = self.top_border + self.grid_size * self.game_height + self.border/2
         for txt in texts:
-            text_surface = font.render(txt, True, (0, 0, 0))
-            rect = text_surface.get_rect()
-            rect.midtop = (x, y_off)
-            self.display.fill(self.bg_color, rect)
+            text_surface = self.text_font_small.render(txt, True, (0, 0, 0))
+            rect = text_surface.get_rect(midtop=(x, y_off))
             self.display.blit(text_surface, rect)
             y_off += rect.height
 
-    def draw_state(self, txt, x):
-        if txt:
-            self.draw_text([txt], x, y_off=5, large=True)
-            y_off = self.font_size_large + 5
-        else:
-            y_off = 5
-        self.draw_text([
-            "R Restart",
-            "H Highscores",
-            "-/+ Resize",
-            "Q Quit"],
-            x, y_off=y_off, large=False)
+        pygame.display.update()
 
     def draw_segment(self, txt, **pos):
         text_surface = self.segment_font.render(txt, True, (255, 0, 0))
