@@ -18,7 +18,13 @@ class Highscores:
     MAX_ENTRIES = 15
 
     def __init__(self, loadfiles, savefile=None):
-        self.highscores = {}
+        """
+        :param loadfiles: list of score files to load
+        :type loadfiles: list[str]
+        :param savefile: score file to save, default loadfiles[0]
+        :type savefile: str
+        """
+        self.highscores = {}  # dict {level: list[Score]}, level: (width: int, height: int, number_of_mines: int)
         self.loadfiles = loadfiles
         if savefile:
             self.savefile = savefile
@@ -47,7 +53,7 @@ class Highscores:
         self.sort_and_limit()
 
     def save(self):
-        # save game state if changed
+        """save game state if changed"""
         newstate = bz2.compress(pickle.dumps(self.highscores))
         if self.oldstate != newstate:
             with open(self.savefile, 'wb') as f:
@@ -60,6 +66,14 @@ class Highscores:
             self.highscores[level] = sorted(self.highscores[level])[0:self.MAX_ENTRIES]
 
     def add_entry(self, level, score):
+        """add score to highscore list
+
+        :param level: game level: (width, height, number_of_mines)
+        :type level: tuple[int]
+        :param score: game time in milliseconds
+        :type score: int
+        :return index: int  index of added entry, if still in list
+        """
         level = tuple(level)
         time = datetime.now().replace(microsecond=0)
         if level not in self.highscores:
@@ -77,14 +91,25 @@ class Highscores:
         return myindex  # return index of added entry, if still in list
 
     def show(self, level, index=None):
+        """Show a window with highscores of given level.
+        Highlight entry with index.
+        Close by pressing any key.
+
+        :param level: game level: (width, height, number_of_mines)
+        :type level: tuple[int]
+        :param index: index of entry to highlight
+        :type index: int
+        """
         level = tuple(level)
         if level in self.highscores:
             win = Tk()
             win.title("Minesweeper")
+
             src_dir = os.path.dirname(os.path.realpath(__file__))
-            # source: https://www.cleanpng.com/png-minesweeper-pro-classic-mine-sweeper-minesweeper-p-662259/
+            # icon source: https://www.cleanpng.com/png-minesweeper-pro-classic-mine-sweeper-minesweeper-p-662259/
             icon = PhotoImage(file=f"{src_dir}/Sprites/minesweeper_256.png")
             win.iconphoto(True, icon)
+
             Label(text=f"Scores {level[0]}x{level[1]}, {level[2]} Mines", height=2).grid(row=0, columnspan=4)
             Label(text="Rank", width=6, relief=SUNKEN).grid(row=1, column=0)
             Label(text="Time", width=14, relief=SUNKEN).grid(row=1, column=1)

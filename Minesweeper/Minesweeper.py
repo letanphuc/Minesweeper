@@ -129,7 +129,7 @@ class MinesweeperGame:
         self.spr_mine_clicked = pygame.image.load(f"{src_dir}/Sprites/mineClicked.png")
         self.spr_mine_false = pygame.image.load(f"{src_dir}/Sprites/mineFalse.png")
         self.spr_game_won = pygame.image.load(f"{src_dir}/Sprites/gamewon.png")  # https://www.cleanpng.com/png-microsoft-minesweeper-video-game-quantum-minesweep-3302023/
-        self.spr_game_lost = pygame.image.load(f"{src_dir}/Sprites/gamelost.png")  # https://www.cleanpng.com/png-computer-icons-minesweeper-3374745/
+        self.spr_game_lost = pygame.image.load(f"{src_dir}/Sprites/gamelost.png")  # https://www.cleanpng.com/png-explosion-powerful-intense-explosion-with-orange-c-8036272/
         self.spr_rank = pygame.image.load(f"{src_dir}/Sprites/rank.png")  # https://de.cleanpng.com/png-5ejl5o/
         self.spr_grids = (
             pygame.image.load(f"{src_dir}/Sprites/empty.png"),
@@ -181,7 +181,7 @@ class MinesweeperGame:
                     yield GameEvent(GameEvent.EventType.RESTART, None)
                 elif event.key == pygame.K_h:
                     yield GameEvent(GameEvent.EventType.HIGHSCORES, None)
-                elif event.key == pygame.K_q:
+                elif event.key in (pygame.K_q, pygame.K_ESCAPE):
                     yield GameEvent(GameEvent.EventType.EXIT, None)
                 elif event.unicode == '-':
                     yield GameEvent(GameEvent.EventType.RESIZE, -1)
@@ -197,6 +197,8 @@ class MinesweeperGame:
 
     def main_loop(self):
         self.time_start = self.time_current = pygame.time.get_ticks()
+        redraw_needed = True
+        last_time_displayed = -1
         while self.game_state not in ("Exit", "Resize", "Highscores"):
             for event in self.get_event():
                 logger.info(f"{event=}")
@@ -217,6 +219,7 @@ class MinesweeperGame:
 
                 if self.game_state == "Playing":
                     if event.t == GameEvent.EventType.CLICK:
+                        redraw_needed = True
                         g = self.grid[event.data[0]][event.data[1]]
 
                         if g.flag:  # left-click flag: unflag
@@ -235,16 +238,22 @@ class MinesweeperGame:
                     elif event.t == GameEvent.EventType.RIGHT_CLICK:
                         g = self.grid[event.data[0]][event.data[1]]
                         if not g.clicked:  # toggle flag
+                            redraw_needed = True
                             self.mine_left += 1 if g.flag else -1
                             g.flag = not g.flag
 
-            if self.game_state not in ("Exit", "Resize", "Highscores", "Win"):
-                self.process_state()
-                self.render()
-                self.timer.tick()
-
             if self.game_state not in ("Game Over", "Win"):
                 self.time_current = pygame.time.get_ticks()
+                if (self.time_current - self.time_start) // 1000 > last_time_displayed:
+                    last_time_displayed = (self.time_current - self.time_start) // 1000
+                    redraw_needed = True
+
+            if redraw_needed and self.game_state not in ("Exit", "Resize", "Highscores", "Win"):
+                redraw_needed = False
+                self.process_state()
+                self.render()
+
+            self.timer.tick()
 
         pygame.quit()
         return self.game_state, self.return_argument
